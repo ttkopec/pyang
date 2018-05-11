@@ -28,32 +28,39 @@ import xml.etree.ElementTree as ET
 from pyang import plugin, statements, error
 from pyang.util import unique_prefixes
 
-ss = ET.Element("stylesheet",
-                {"version": "1.0",
-                 "xmlns": "http://www.w3.org/1999/XSL/Transform",
-                 "xmlns:nc": "urn:ietf:params:xml:ns:netconf:base:1.0",
-                 "xmlns:en": "urn:ietf:params:xml:ns:netconf:notification:1.0"})
 """Root element of the output XSLT stylesheet."""
 
-type_class = dict((t,"string") for t in
+type_class = dict((t, "string") for t in
                   ("boolean", "int8", "int16", "int32",
                    "uint8", "uint16", "uint32"))
 """Classification of types suited for JSON translation."""
 
-type_class.update((t,t) for t in
+type_class.update((t, t) for t in
                   ("empty", "instance-identifier", "identityref", "string"))
 
-union_class = dict((t,"integer") for t in
+union_class = dict((t, "integer") for t in
                    ("int8", "int16", "int32",
-                   "uint8", "uint16", "uint32"))
+                    "uint8", "uint16", "uint32"))
 """Classification of types needed for resolving union-typed values."""
 
 union_class.update({"boolean": "boolean"})
 
+
 def pyang_plugin_init():
     plugin.register_plugin(JsonXslPlugin())
 
+
 class JsonXslPlugin(plugin.PyangPlugin):
+
+    def __init__(self):
+        self.ss = ET.Element("stylesheet",
+                             {"version": "1.0",
+                              "xmlns": "http://www.w3.org/1999/XSL/Transform",
+                              "xmlns:nc": "urn:ietf:params:xml:ns:netconf:base:1.0",
+                              "xmlns:en": "urn:ietf:params:xml:ns:netconf:notification:1.0"})
+
+        super().__init__()
+
     def add_output_format(self, fmts):
         self.multiple_modules = True
         fmts['jsonxsl'] = self
@@ -76,18 +83,23 @@ class JsonXslPlugin(plugin.PyangPlugin):
         for m in modules:
             self.top_names.extend([c.arg for c in m.i_children if
                                    c.keyword not in ("rpc", "notification")])
-        tree = ET.ElementTree(ss)
-        ET.SubElement(ss, "output", method="text")
+        tree = ET.ElementTree(self.ss)
+        ET.SubElement(self.ss, "output", method="text")
         xsltdir = os.environ.get("PYANG_XSLT_DIR",
                                  "/usr/local/share/yang/xslt")
-        ET.SubElement(ss, "include", href=xsltdir + "/jsonxsl-templates.xsl")
-        ET.SubElement(ss, "strip-space", elements="*")
-        nsmap = ET.SubElement(ss, "template", name="nsuri-to-module")
+        ET.SubElement(self.ss, "include", href=xsltdir + "/jsonxsl-templates.xsl")
+        ET.SubElement(self.ss, "strip-space", elements="*")
+        nsmap = ET.SubElement(self.ss, "template", name="nsuri-to-module")
         ET.SubElement(nsmap, "param", name="uri")
         choo = ET.SubElement(nsmap, "choose")
+
+        print('=====================================================================================')
+        print(ET.tostring(self.ss))
+        print('=====================================================================================')
+
         for module in self.real_prefix.keys():
             ns_uri = module.search_one("namespace").arg
-            ss.attrib["xmlns:" + self.real_prefix[module]] = ns_uri
+            self.ss.attrib["xmlns:" + self.real_prefix[module]] = ns_uri
             when = ET.SubElement(choo, "when", test="$uri='" + ns_uri + "'")
             self.xsl_text(module.i_modulename, when)
             self.process_module(module)
@@ -140,7 +152,7 @@ class JsonXslPlugin(plugin.PyangPlugin):
         tmpl = self.xsl_template(p)
         ct = self.xsl_calltemplate("container", tmpl)
         self.xsl_withparam("level", "1", ct)
-        if ntf.arg == "eventTime":            # local name collision
+        if ntf.arg == "eventTime":  # local name collision
             self.xsl_withparam("nsid", ntf.i_module.i_modulename + ":", ct)
         self.process_children(ntf, p, 2)
 
@@ -161,7 +173,7 @@ class JsonXslPlugin(plugin.PyangPlugin):
             ct = self.xsl_calltemplate(ch.keyword, tmpl)
             self.xsl_withparam("level", "%d" % level, ct)
             if (data_parent.i_module is None or
-                ch.i_module.i_modulename != data_parent.i_module.i_modulename):
+                    ch.i_module.i_modulename != data_parent.i_module.i_modulename):
                 self.xsl_withparam("nsid", ch.i_module.i_modulename + ":", ct)
             if ch.keyword in ["leaf", "leaf-list"]:
                 self.type_param(ch, ct)
@@ -202,6 +214,7 @@ class JsonXslPlugin(plugin.PyangPlugin):
 
     def get_types(self, node):
         res = []
+
         def resolve(typ):
             if typ.arg == "union":
                 for ut in typ.i_type_spec.types: resolve(ut)
@@ -212,6 +225,7 @@ class JsonXslPlugin(plugin.PyangPlugin):
                 resolve(typ.i_typedef.search_one("type"))
             else:
                 res.append(typ.arg)
+
         typ = node.search_one("type")
         if typ.arg == "leafref":
             resolve(node.i_leafref_ptr[0].search_one("type"))
@@ -228,7 +242,7 @@ class JsonXslPlugin(plugin.PyangPlugin):
 
     def xsl_template(self, name):
         """Construct an XSLT 'template' element matching `name`."""
-        return ET.SubElement(ss, "template" , match = name)
+        return ET.SubElement(self.ss, "template", match=name)
 
     def xsl_text(self, text, parent):
         """Construct an XSLT 'text' element containing `text`.
