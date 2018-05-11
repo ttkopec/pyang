@@ -35,7 +35,7 @@ ss = ET.Element("stylesheet",
                  "xmlns:en": "urn:ietf:params:xml:ns:netconf:notification:1.0"})
 """Root element of the output XSLT stylesheet."""
 
-type_class = dict((t,"unquoted") for t in
+type_class = dict((t,"string") for t in
                   ("boolean", "int8", "int16", "int32",
                    "uint8", "uint16", "uint32"))
 """Classification of types suited for JSON translation."""

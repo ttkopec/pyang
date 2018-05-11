@@ -14,7 +14,7 @@ from . import grammar
 from . import util
 from . import statements
 
-__version__ = '1.7.3'
+__version__ = '1.7.3b'
 __date__ = '2017-06-27'
 
 class Context(object):

@@ -67,7 +67,7 @@ setup(name='pyang',
       author_email='mbj@tail-f.com',
       description="A YANG (RFC 6020) validator and converter",
       long_description="An extensible  YANG (RFC 6020) validator.  Provides a framwork for plugins that can convert YANG modules to other formats.",
-      url='https://github.com/mbj4668/pyang',
+      url='https://github.com/ttkopec/pyang',
       license='BSD',
       classifiers=[
             'Development Status :: 5 - Production/Stable',
