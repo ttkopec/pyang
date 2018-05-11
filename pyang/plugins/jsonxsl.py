@@ -93,10 +93,6 @@ class JsonXslPlugin(plugin.PyangPlugin):
         ET.SubElement(nsmap, "param", name="uri")
         choo = ET.SubElement(nsmap, "choose")
 
-        print('=====================================================================================')
-        print(ET.tostring(self.ss))
-        print('=====================================================================================')
-
         for module in self.real_prefix.keys():
             ns_uri = module.search_one("namespace").arg
             self.ss.attrib["xmlns:" + self.real_prefix[module]] = ns_uri
