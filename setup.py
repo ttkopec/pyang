@@ -1,11 +1,9 @@
 from setuptools import setup
 from setuptools import Distribution
-from os.path import join
 import pyang
 import glob
 import os
 import re
-import sys
 import tempfile
 
 modules_iana = glob.glob(os.path.join('modules', 'iana', '*.yang'))
@@ -14,6 +12,7 @@ xslt = glob.glob(os.path.join('xslt', '*.xsl'))
 schema = glob.glob(os.path.join('schema', '*.rng'))
 images = glob.glob(os.path.join('tools', 'images', '*'))
 man1 = glob.glob(os.path.join('man', 'man1', '*.1'))
+
 
 class PyangDist(Distribution):
 

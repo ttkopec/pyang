@@ -2,6 +2,8 @@
 
 import re
 import shlex
+import sys
+import datetime
 
 ### Regular expressions - constraints on arguments
 
@@ -125,6 +127,12 @@ re_absolute_schema_nodeid = re.compile("^" + absolute_schema_nodeid + "$")
 re_descendant_schema_nodeid = re.compile("^" + descendant_schema_nodeid + "$")
 re_deviate = re.compile("^(add|delete|replace|not-supported)$")
 
+# Not part of YANG syntax per se but useful for pyang in several places
+re_filename = re.compile(r"^([^@]*?)" +          # putative module name
+                         r"(?:@([^.]*?))?" +     # putative revision
+                         r"(?:\.yang|\.yin)*" +  # foo@bar.yang.yin.yang.yin ?
+                         r"\.(yang|yin)$")       # actual final extension
+
 arg_type_map = {
     "identifier": lambda s: re_identifier.search(s) is not None,
     "non-negative-integer": lambda s: re_nonneg_integer.search(s) is not None,
@@ -132,7 +140,7 @@ arg_type_map = {
     "uri": lambda s: re_uri.search(s) is not None,
     "boolean": lambda s: re_boolean.search(s) is not None,
     "version": lambda s: re_version.search(s) is not None,
-    "date": lambda s: re_date.search(s) is not None,
+    "date": lambda s: chk_date_arg(s),
     "status-arg": lambda s: re_status.search(s) is not None,
     "key-arg": lambda s: re_key.search(s) is not None,
     "length-arg": lambda s: re_length.search(s) is not None,
@@ -161,6 +169,19 @@ arg_type_map = {
 Regular expressions for all argument types except plain string that
 are checked directly by the parser.
 """
+
+def chk_date_arg(s):
+    """Checks if the string `s` is a valid date string.
+
+    Return True of False."""
+    if re_date.search(s) is None:
+        return False
+    comp = s.split('-')
+    try:
+        dt = datetime.date(int(comp[0]), int(comp[1]), int(comp[2]))
+        return True
+    except Exception as e:
+        return False
 
 def chk_enum_arg(s):
     """Checks if the string `s` is a valid enum string.
@@ -204,7 +225,19 @@ def chk_if_feature_expr(s):
 #         | ('and'/'or', Expr, Expr)
 #         | Identifier
 def parse_if_feature_expr(s):
-    sx = shlex.shlex(s)
+    try:
+        # Encoding to ascii works for valid if-feature-exprs, since all
+        # pars are YANG identifiers (or the boolean keywords).
+        # The reason for this fix is that in Python < 2.7.3, shlex would return
+        # erroneous tokens if a unicode string was passed.
+        # Also, shlex uses cStringIO internally which doesn't handle unicode
+        # characters outside the ascii range anyway.
+        if sys.version < '3':
+            sx = shlex.shlex(s.encode("ascii"))
+        else:
+            sx = shlex.shlex(s)
+    except UnicodeEncodeError:
+        return None
     sx.wordchars += ":-" # need to handle prefixes and '-' in the name
     operators = [None]
     operands = []

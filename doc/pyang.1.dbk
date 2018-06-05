@@ -50,6 +50,8 @@
       <arg choice="opt">--ietf</arg>
       <arg choice="opt">--lax-quote-checks</arg>
       <arg choice="opt">--lax-xpath-checks</arg>
+      <arg choice="opt">--features <replaceable>features</replaceable></arg>
+      <arg choice="opt">--max-status <replaceable>maxstatus</replaceable></arg>
       <arg choice="opt">--hello</arg>
       <arg choice="opt">--check-update-from <replaceable>oldfile</replaceable></arg>
       <arg choice="opt">-o <replaceable>outfile</replaceable></arg>
@@ -516,6 +518,27 @@
 
       <varlistentry>
         <term>
+          <option>--max-status</option>
+          <replaceable>maxstatus</replaceable>
+        </term>
+        <listitem>
+          <para>
+            <replaceable>maxstatus</replaceable> is one of:
+            <replaceable>current</replaceable>,
+            <replaceable>deprecated</replaceable>, or
+            <replaceable>obsolete</replaceable>.
+          </para>
+          <para>
+            This option is used to prune the data model by removing
+            all nodes that are defined with a "status" that is less
+            than the given <replaceable>maxstatus</replaceable>.  This
+            option affects all output formats.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
           <option>--deviation-module</option>
           <replaceable>file</replaceable>
         </term>
@@ -724,6 +747,12 @@
         </listitem>
       </varlistentry>
       <varlistentry>
+        <term><emphasis>identifiers</emphasis></term>
+        <listitem>
+          <para>All identifiers in the module.</para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
         <term><emphasis>jsonxsl</emphasis></term>
         <listitem>
           <para>XSLT stylesheet for transforming XML instance
@@ -746,7 +775,8 @@
       <varlistentry>
         <term><emphasis>name</emphasis></term>
         <listitem>
-          <para>Module name, and the name of the main module for a submodule.</para>
+          <para>Module name, and the name of the main module for a
+          submodule.</para>
         </listitem>
       </varlistentry>
       <varlistentry>
@@ -827,6 +857,19 @@
           <para>
             Validate that the module's name starts with
             <replaceable>prefix</replaceable>.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+    <variablelist>
+      <varlistentry>
+        <term>
+          <option>--lint-ensure-hyphenated-names</option>
+        </term>
+        <listitem>
+          <para>
+            Validate that all identifiers use hyphenated style, i.e.,
+            no uppercase letters or underscores.
           </para>
         </listitem>
       </varlistentry>
@@ -1120,6 +1163,21 @@ $ osascript foo.scpt</screen>
     <para>The <emphasis>name</emphasis> output prints the name of each
     module in the input data model. For submodules, it also shows the
     name of the main module to which the submodule belongs.</para>
+    <para>
+	name output specific option:
+    </para>
+    <variablelist>
+	<varlistentry>
+	    <term>
+		<option>--name-print-revision</option>
+	    </term>
+	    <listitem>
+		<para>
+		    Print the name and revision in name@revision format.
+		</para>
+	    </listitem>
+	</varlistentry>
+    </variablelist>
   </refsect1>
 
   <refsect1 xml:id="man.1.pyang.sample-xml-skeleton_output">

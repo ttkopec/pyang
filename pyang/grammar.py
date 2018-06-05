@@ -644,12 +644,6 @@ def _chk_stmts(ctx, pos, stmts, parent, spec, canonical):
                 error.err_add(ctx.errors, stmt.pos,
                               'BAD_VALUE', (stmt.arg, arg_type))
             elif (arg_type == 'identifier' and
-                  re_identifier_illegal_prefix.search(stmt.arg) is not None):
-                error.err_add(ctx.errors, stmt.pos, 'XML_IDENTIFIER',
-                              stmt.arg)
-                # recoverable error
-                stmt.is_grammatically_valid = True
-            elif (arg_type == 'identifier' and
                   ctx.max_identifier_len is not None
                   and len(stmt.arg) > ctx.max_identifier_len):
                 error.err_add(ctx.errors, stmt.pos, 'LONG_IDENTIFIER',
@@ -814,8 +808,18 @@ def sort_canonical(keyword, stmts):
     # keep the order of data definition statements and case
     keep = [s[0] for s in data_def_stmts] + ['case']
     for (kw, _spec) in flatten_spec(subspec):
-        res.extend([stmt for stmt in stmts if (stmt.keyword == kw and
-                                               kw not in keep)])
+        # keep comments before a statement together with that statement
+        comments = []
+        for s in stmts:
+            if s.keyword == '_comment':
+                comments.append(s)
+            elif s.keyword == kw and kw not in keep:
+                res.extend(comments)
+                comments = []
+                res.append(s)
+            else:
+                comments = []
+
     # then copy all other statements (extensions)
     res.extend([stmt for stmt in stmts if stmt not in res])
     return res

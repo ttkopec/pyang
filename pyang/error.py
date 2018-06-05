@@ -3,11 +3,19 @@ import copy
 ### struct to keep track of position for error messages
 
 class Position(object):
+    __slots__ = (
+        'ref',
+        'line',
+        'top',
+        'uses_pos',
+    )
+
     def __init__(self, ref):
         self.ref = ref
         self.line = 0
         self.top = None
         self.uses_pos = None
+
     def __str__(self):
         s = self.ref + ':' + str(self.line)
         if self.uses_pos is None:
@@ -75,11 +83,11 @@ error_codes = \
        'unexpected keyword "%s", expected one of %s'),
     'UNEXPECTED_KEYWORD_CANONICAL':
       (1,
-       'keyword "%s" not in canonical order, (See RFC 6020, Section 12)'),
+       'keyword "%s" not in canonical order (see RFC 6020, Section 12)'),
     'UNEXPECTED_KEYWORD_CANONICAL_1':
       (1,
        'keyword "%s" not in canonical order,'
-       'expected "%s", (See RFC 6020, Section 12)'),
+       'expected "%s" (see RFC 6020, Section 12)'),
     'EXPECTED_ARGUMENT':
       (1,
        'expected an argument for keyword "%s"'),
@@ -88,7 +96,8 @@ error_codes = \
        'did not expect an argument, got "%s"'),
     'XML_IDENTIFIER':
       (3,
-       'illegal identifier "%s", must not start with [xX][mM][lL]'),
+       'illegal identifier "%s", must not start with [xX][mM][lL] in'
+       'YANG version 1 (see RFC 6020, Section 12)'),
     'TRAILING_GARBAGE':
       (2,
        'trailing garbage after module'),
@@ -125,12 +134,18 @@ error_codes = \
     'WBAD_MODULE_NAME':
       (4,
        'unexpected modulename "%s" in %s, should be %s'),
+    'FILENAME_BAD_MODULE_NAME':
+      (4,
+       'filename "%s" suggests invalid module name "%s", should match "%s"'),
     'BAD_REVISION':
       (3,
        'unexpected latest revision "%s" in %s, should be %s'),
     'WBAD_REVISION':
       (4,
        'unexpected latest revision "%s" in %s, should be %s'),
+    'FILENAME_BAD_REVISION':
+      (4,
+       'filename "%s" suggests invalid revision "%s", should match "%s"'),
     'BAD_SUB_BELONGS_TO':
       (1,
        'module %s includes %s, but %s does not specify a correct belongs-to'),
@@ -375,15 +390,9 @@ error_codes = \
     'DUPLICATE_DEFAULT':
         (1,
          'the default value %s is given twice in the leaf list'),
-    'CURRENT_USES_DEPRECATED':
+    'BAD_STATUS_REFERENCE':
       (2,
-       'the %s definiton is current, but the %s it references is deprecated'),
-    'CURRENT_USES_OBSOLETE':
-      (2,
-       'the %s definiton is current, but the %s it references is obsolete'),
-    'DEPRECATED_USES_OBSOLETE':
-      (3,
-       'the %s definiton is deprecated, but the %s it references is obsolete'),
+       'the "%s" definition is %s, but the "%s" it references is %s'),
     'REVISION_ORDER':
       (4,
        'the revision statements are not given in reverse chronological order'),

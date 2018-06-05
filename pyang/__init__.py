@@ -13,9 +13,11 @@ from . import yin_parser
 from . import grammar
 from . import util
 from . import statements
+from . import syntax
 
-__version__ = '1.7.3c'
-__date__ = '2017-06-27'
+__version__ = '1.7.5c'
+__date__ = '2018-04-25'
+
 
 class Context(object):
     """Class which encapsulates a parse session"""
@@ -42,6 +44,7 @@ class Context(object):
         self.lax_xpath_checks = False
         self.deviation_modules = []
         self.features = {}
+        self.max_status = None
         self.keep_comments = False
 
         for mod, rev, handle in self.repository.get_modules_and_revisions(self):
@@ -74,17 +77,25 @@ class Context(object):
         if module is None:
             return None
 
-        if expect_modulename is not None and expect_modulename != module.arg:
-            if expect_failure_error:
-                error.err_add(self.errors, module.pos, 'BAD_MODULE_NAME',
-                              (module.arg, ref, expect_modulename))
-                return None
-            else:
-                error.err_add(self.errors, module.pos, 'WBAD_MODULE_NAME',
-                              (module.arg, ref, expect_modulename))
+        if expect_modulename is not None:
+            if not re.match(syntax.re_identifier, expect_modulename):
+                error.err_add(self.errors, module.pos, 'FILENAME_BAD_MODULE_NAME',
+                              (ref, expect_modulename, syntax.identifier))
+            elif expect_modulename != module.arg:
+                if expect_failure_error:
+                    error.err_add(self.errors, module.pos, 'BAD_MODULE_NAME',
+                                  (module.arg, ref, expect_modulename))
+                    return None
+                else:
+                    error.err_add(self.errors, module.pos, 'WBAD_MODULE_NAME',
+                                  (module.arg, ref, expect_modulename))
+
         latest_rev = util.get_latest_revision(module)
         if expect_revision is not None:
-            if expect_revision != latest_rev:
+            if not re.match(syntax.re_date, expect_revision):
+                error.err_add(self.errors, module.pos, 'FILENAME_BAD_REVISION',
+                              (ref, expect_revision, 'YYYY-MM-DD'))
+            elif expect_revision != latest_rev:
                 if expect_failure_error:
                     error.err_add(self.errors, module.pos, 'BAD_REVISION',
                                   (latest_rev, ref, expect_revision))
@@ -404,17 +415,27 @@ class FileRepository(Repository):
             if not pkgutil.find_loader('pip'):
                 return  # abort search if pip is not installed
 
-            import pip
-            location = pip.locations.distutils_scheme('pyang')
-            self.dirs.append(os.path.join(location['data'],
-                                          'share','yang','modules'))
+            # hack below to handle pip 10 internals
+            # if someone knows pip and how to fix this, it would be great!
+            location = None
+            try:
+                import pip.locations as locations
+                location = locations.distutils_scheme('pyang')
+            except:
+                try:
+                    import pip._internal.locations as locations
+                    location = locations.distutils_scheme('pyang')
+                except:
+                    pass
+            if location is not None:
+                self.dirs.append(os.path.join(location['data'],
+                                              'share','yang','modules'))
 
 
 
     def _setup(self, ctx):
         # check all dirs for yang and yin files
         self.modules = []
-        r = re.compile(r"^(.*?)(\@(\d{4}-\d{2}-\d{2}))?\.(yang|yin)$")
         def add_files_from_dir(d):
             try:
                 files = os.listdir(d)
@@ -423,9 +444,9 @@ class FileRepository(Repository):
             for fname in files:
                 absfilename = os.path.join(d, fname)
                 if os.path.isfile(absfilename):
-                    m = r.search(fname)
+                    m = syntax.re_filename.search(fname)
                     if m is not None:
-                        (name, _dummy, rev, format) = m.groups()
+                        (name, rev, format) = m.groups()
                         if not os.access(absfilename, os.R_OK): continue
                         if absfilename.startswith("./"):
                             absfilename = absfilename[2:]
@@ -440,6 +461,7 @@ class FileRepository(Repository):
     # FIXME: bad strategy; when revisions are not used in the filename
     # this code parses all modules :(  need to do this lazily
     def _peek_revision(self, absfilename, format, ctx):
+        fd = None
         try:
             fd = io.open(absfilename, "r", encoding="utf-8")
             text = fd.read()
@@ -447,6 +469,10 @@ class FileRepository(Repository):
             return None
         except UnicodeDecodeError as ex:
             return None
+        finally:
+            if fd is not None:
+                fd.close()
+
         if format == 'yin':
             p = yin_parser.YinParser()
         else:
@@ -466,6 +492,7 @@ class FileRepository(Repository):
 
     def get_module_from_handle(self, handle):
         (format, absfilename) = handle
+        fd = None
         try:
             fd = io.open(absfilename, "r", encoding="utf-8")
             text = fd.read()
@@ -474,6 +501,9 @@ class FileRepository(Repository):
         except UnicodeDecodeError as ex:
             s = str(ex).replace('utf-8', 'utf8')
             raise self.ReadError(absfilename + ": unicode error: " + s)
+        finally:
+            if fd is not None:
+                fd.close()
 
         if format is None:
             format = util.guess_format(text)

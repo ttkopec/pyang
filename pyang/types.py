@@ -35,15 +35,18 @@ class TypeSpec(object):
 class IntTypeSpec(TypeSpec):
     def __init__(self, name, min, max):
         TypeSpec.__init__(self, name)
+        self.is_int = True
         self.min = min
         self.max = max
 
     def str_to_val(self, errors, pos, s):
         try:
-            if s in ['min', 'max']:
-                return s
-            if syntax.re_integer.search(s) is None:
-                raise ValueError
+            if len(s) > 1 and s[0] == '0' and s[1] != 'x':
+                # positive octal
+                s = s[:1] + 'o' + s[1:]
+            elif len(s) > 2 and s[0] == '-' and s[1] == '0' and s[2] != 'x':
+                # negative octal
+                s = s[:2] + 'o' + s[2:]
             return int(s, 0)
         except ValueError:
             err_add(errors, pos, 'TYPE_VALUE',
@@ -122,8 +125,6 @@ class Decimal64TypeSpec(TypeSpec):
         self.max = Decimal64Value(9223372036854775807, fd=self.fraction_digits)
 
     def str_to_val(self, errors, pos, s0):
-        if s0 in ('min', 'max'):
-            return s0
         # make sure it is syntactically correct
         if syntax.re_decimal.search(s0) is None:
             err_add(errors, pos, 'TYPE_VALUE',
@@ -263,25 +264,40 @@ def is_derived_from_or_self(a, b, visited):
     if a == b:
         return True
     for p in a.search('base'):
-        val = p.i_identity
-        if val not in visited:
-            visited.append(val)
-            if is_derived_from_or_self(val, b, visited):
-                return True
+        if hasattr(p, 'i_identity'):
+            val = p.i_identity
+            if val not in visited:
+                visited.append(val)
+                if is_derived_from_or_self(val, b, visited):
+                    return True
     return False
 
 ## type restrictions
 
 def validate_range_expr(errors, stmt, type_):
+    def maybe_ensure_base10(s):
+        if hasattr(type_.i_type_spec, 'is_int'):
+            if s not in ['min', 'max'] and syntax.re_integer.search(s) is None:
+                err_add(errors, stmt.pos, 'TYPE_VALUE',
+                        (s, type_.i_type_spec.definition, 'not an integer'))
+
     # break the expression apart
     def f(lostr, histr):
+        maybe_ensure_base10(lostr),
+        if lostr in ('min', 'max'):
+            loval = lostr
+        else:
+            loval = type_.i_type_spec.str_to_val(errors, stmt.pos, lostr)
         if histr == '':
             # this means that a single number was in the range, e.g.
             # "4 | 5..6".
-            return (type_.i_type_spec.str_to_val(errors, stmt.pos, lostr),
-                    None)
-        return (type_.i_type_spec.str_to_val(errors, stmt.pos, lostr),
-                type_.i_type_spec.str_to_val(errors, stmt.pos, histr))
+            return (loval, None)
+        maybe_ensure_base10(histr),
+        if histr in ('min', 'max'):
+            hival = histr
+        else:
+            hival = type_.i_type_spec.str_to_val(errors, stmt.pos, histr)
+        return (loval, hival)
     ranges = [f(m[1], m[6]) for m in syntax.re_range_part.findall(stmt.arg)]
     return validate_ranges(errors, stmt.pos, ranges, type_)
 
@@ -431,7 +447,7 @@ def _validate_pattern_libxml2(errors, stmt, invert_match):
         import libxml2
         try:
             re = libxml2.regexpCompile(stmt.arg)
-            return ('libxml2', re, stmt.pos, invert_match)
+            return ('libxml2', re, stmt.pos, invert_match, stmt.arg)
         except libxml2.treeError as v:
             err_add(errors, stmt.pos, 'PATTERN_ERROR', str(v))
             return None
@@ -457,7 +473,7 @@ def _validate_pattern_lxml(errors, stmt, invert_match):
             '   </xsd:schema>' % quoteattr(stmt.arg))
         try:
             sch = lxml.etree.XMLSchema(lxml.etree.parse(doc))
-            return ('lxml', sch, stmt.pos, invert_match)
+            return ('lxml', sch, stmt.pos, invert_match, stmt.arg)
         except lxml.etree.XMLSchemaParseError as v:
             err_add(errors, stmt.pos, 'PATTERN_ERROR', str(v))
             return None
@@ -478,7 +494,7 @@ def validate_pattern_expr(errors, stmt):
     if res is not False:
         return res
     # Otherwise we can't validate patterns :(
-    return None
+    return ('skip', None, stmt.pos, invert_match, stmt.arg)
 
 class PatternTypeSpec(TypeSpec):
     def __init__(self, base, pattern_specs):
@@ -492,13 +508,15 @@ class PatternTypeSpec(TypeSpec):
     def validate(self, errors, pos, val, errstr=''):
         if self.base.validate(errors, pos, val, errstr) == False:
             return False
-        for (type_, re, re_pos, invert_match) in self.res:
+        for (type_, re, re_pos, invert_match, patstr) in self.res:
             if type_ == 'libxml2':
                 is_valid = re.regexpExec(val) == 1
             elif type_ == 'lxml':
                 import lxml
                 doc = StringIO('<a>%s</a>' % escape(val))
                 is_valid = re.validate(lxml.etree.parse(doc))
+            elif type_ == 'skip':
+                continue # can't validate patterns
             if ((not is_valid and not invert_match) or
                 (is_valid and invert_match)):
                 err_add(errors, pos, 'TYPE_VALUE',

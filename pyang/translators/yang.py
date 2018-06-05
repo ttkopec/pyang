@@ -37,9 +37,12 @@ def emit_yang(ctx, module, fd):
 
 _force_newline_arg = ('description', 'contact', 'organization')
 _non_quote_arg_type = ('identifier', 'identifier-ref', 'boolean', 'integer',
-                       'non-negative-integer', 'date', 'ordered-by-arg',
+                       'non-negative-integer', 'max-value',
+                       'date', 'ordered-by-arg',
                        'fraction-digits-arg', 'deviate-arg', 'version',
                        'status-arg')
+
+_maybe_quote_arg_type = ('enum-arg', )
 
 _kwd_class = {
     'yang-version': 'header',
@@ -79,6 +82,17 @@ _keyword_with_trailing_newline = (
     'extension',
     )
 
+_keyword_prefer_squote_arg = (
+    'must',
+    'when',
+    'pattern',
+    )
+
+_need_quote = (
+    " ", "}", "{", ";", '"', "'",
+    "\n", "\t", "\r", "//", "/*", "*/",
+    )
+
 def emit_stmt(ctx, stmt, fd, level, prev_kwd_class, indent, indentstep):
     if ctx.opts.yang_remove_unused_imports and stmt.keyword == 'import':
         for p in stmt.parent.i_unused_prefixes:
@@ -87,9 +101,9 @@ def emit_stmt(ctx, stmt, fd, level, prev_kwd_class, indent, indentstep):
 
     if util.is_prefixed(stmt.raw_keyword):
         (prefix, identifier) = stmt.raw_keyword
-        keyword = prefix + ':' + identifier
+        keywordstr = prefix + ':' + identifier
     else:
-        keyword = stmt.keyword
+        keywordstr = stmt.keyword
 
     kwd_class = get_kwd_class(stmt.keyword)
     if ((level == 1 and
@@ -97,15 +111,21 @@ def emit_stmt(ctx, stmt, fd, level, prev_kwd_class, indent, indentstep):
         stmt.keyword in _keyword_with_trailing_newline):
         fd.write('\n')
 
-    if keyword == '_comment':
+    if stmt.keyword == '_comment':
         emit_comment(stmt.arg, fd, indent)
         return
 
-    fd.write(indent + keyword)
+    fd.write(indent + keywordstr)
     if stmt.arg != None:
-        if keyword in grammar.stmt_map:
-            (arg_type, _subspec) = grammar.stmt_map[keyword]
+        if (stmt.keyword in _keyword_prefer_squote_arg and
+            stmt.arg.find("'") == -1):
+            fd.write(" '" + stmt.arg + "'")
+        elif stmt.keyword in grammar.stmt_map:
+            (arg_type, _subspec) = grammar.stmt_map[stmt.keyword]
             if arg_type in _non_quote_arg_type:
+                fd.write(' ' + stmt.arg)
+            elif (arg_type in _maybe_quote_arg_type and
+                  not need_quote(stmt.arg)):
                 fd.write(' ' + stmt.arg)
             else:
                 emit_arg(stmt, fd, indent, indentstep)
@@ -146,7 +166,10 @@ def emit_arg(stmt, fd, indent, indentstep):
         fd.write('\n')
         fd.write(indent + indentstep + '"' + lines[0])
         for line in lines[1:-1]:
-            fd.write(indent + indentstep + ' ' + line)
+            if line[0] == '\n':
+                fd.write('\n')
+            else:
+                fd.write(indent + indentstep + ' ' + line)
         # write last line
         fd.write(indent + indentstep + ' ' + lines[-1])
         if lines[-1][-1] == '\n':
@@ -163,3 +186,9 @@ def emit_comment(comment, fd, indent):
         else:
             fd.write(indent + x)
     fd.write('\n')
+
+def need_quote(arg):
+    for ch in _need_quote:
+        if arg.find(ch) != -1:
+            return True
+    return False

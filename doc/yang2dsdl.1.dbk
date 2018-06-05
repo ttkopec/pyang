@@ -34,6 +34,8 @@
       <arg choice="opt">-d <replaceable>dir</replaceable></arg>
       <arg choice="opt">-b <replaceable>basename</replaceable></arg>
       <arg choice="opt">-j</arg>
+      <arg choice="opt">-x</arg>
+      <arg choice="opt">-c</arg>
       <arg choice="opt">-v <replaceable>instance</replaceable></arg>
       <arg choice="plain" rep="repeat">
         <replaceable>file</replaceable>
@@ -46,6 +48,8 @@
       <arg choice="opt">-d <replaceable>dir</replaceable></arg>
       <arg choice="opt">-b <replaceable>basename</replaceable></arg>
       <arg choice="opt">-j</arg>
+      <arg choice="opt">-x</arg>
+      <arg choice="opt">-c</arg>
       <arg choice="opt">-v <replaceable>instance</replaceable></arg>
       <arg choice="plain">
         <replaceable>file</replaceable>
@@ -58,6 +62,8 @@
       <arg choice="opt">-d <replaceable>dir</replaceable></arg>
       <arg choice="plain">-b <replaceable>basename</replaceable></arg>
       <arg choice="opt">-j</arg>
+      <arg choice="opt">-x</arg>
+      <arg choice="opt">-c</arg>
       <arg choice="plain">-v <replaceable>instance</replaceable></arg>
     </cmdsynopsis>
     <cmdsynopsis>
@@ -89,7 +95,7 @@
     directory must be writable.</para>
     <para>Metadata annotations are also supported, if they are defined
     and used as described in <link
-    xlink:href="https://tools.ietf.org/html/draft-lhotka-netmod-yang-metadata">draft-lhotka-netmod-yang-metadata</link>.</para>
+    xlink:href="http://tools.ietf.org/html/rfc7952">RFC 7952</link>.</para>
 
     <para>The script can be executed by any shell interpreter
     compatible with POSIX.2, such as
@@ -116,6 +122,12 @@
         <term><literal>get-reply</literal></term>
         <listitem><para>A complete NETCONF message
         containing a reply to the &lt;nc:get&gt;
+        operation.</para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><literal>get-data-reply</literal></term>
+        <listitem><para>A complete NETCONF message
+        containing a reply to the &lt;ncds:get-data&gt;
         operation.</para></listitem>
       </varlistentry>
       <varlistentry>
@@ -294,6 +306,7 @@
           <userinput>data</userinput> (default),
           <userinput>config</userinput>,
           <userinput>get-reply</userinput>,
+          <userinput>get-data-reply</userinput>,
           <userinput>get-config-reply</userinput>,
           <userinput>edit-config</userinput>,
           <userinput>rpc</userinput>, <userinput>rpc-reply</userinput>
@@ -306,6 +319,22 @@
         <listitem>
           <para>Validates an instance XML document contained in file
           <replaceable>instance</replaceable>.</para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>-x</option></term>
+        <listitem>
+          <para>Try to translate modules written in unsupported YANG
+          versions.  If the module doesn't use any constructs
+          introduced after YANG version 1, this may work.  This option
+          may produce unexpected results.  Use at own risk.</para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>-c</option></term>
+        <listitem>
+          <para>Use only definitions with status "current" in the YANG
+          module.</para>
         </listitem>
       </varlistentry>
     </variablelist>

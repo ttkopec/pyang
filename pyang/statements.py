@@ -62,7 +62,7 @@ def add_keyword_phase_i_children(phase, keyword):
 
 def add_data_keyword(keyword):
     """Can be used by plugins to register extensions as data keywords."""
-    _data_keywords.append(keyword)
+    data_keywords.append(keyword)
 
 def add_keyword_with_children(keyword):
     _keyword_with_children[keyword] = True
@@ -203,7 +203,7 @@ _validation_map = {
     ('grammar', 'module'):lambda ctx, s: v_grammar_module(ctx, s),
     ('grammar', 'submodule'):lambda ctx, s: v_grammar_module(ctx, s),
     ('grammar', 'typedef'):lambda ctx, s: v_grammar_typedef(ctx, s),
-    ('grammar', '*'):lambda ctx, s: v_grammar_unique_defs(ctx, s),
+    ('grammar', '*'):lambda ctx, s: v_grammar_all(ctx, s),
 
     ('import', 'module'):lambda ctx, s: v_import_module(ctx, s),
     ('import', 'submodule'):lambda ctx, s: v_import_module(ctx, s),
@@ -214,6 +214,7 @@ _validation_map = {
     ('type', 'feature'):lambda ctx, s: v_type_feature(ctx, s),
     ('type', 'if-feature'):lambda ctx, s: v_type_if_feature(ctx, s),
     ('type', 'identity'):lambda ctx, s: v_type_identity(ctx, s),
+    ('type', 'status'):lambda ctx, s: v_type_status(ctx, s),
     ('type', 'base'):lambda ctx, s: v_type_base(ctx, s),
     ('type', '$extension'): lambda ctx, s: v_type_extension(ctx, s),
 
@@ -299,8 +300,8 @@ _validation_variables = [
     ('$extension', lambda keyword: util.is_prefixed(keyword)),
     ]
 
-_data_keywords = ['leaf', 'leaf-list', 'container', 'list', 'choice', 'case',
-                  'anyxml', 'anydata', 'action', 'rpc', 'notification']
+data_keywords = ['leaf', 'leaf-list', 'container', 'list', 'choice', 'case',
+                 'anyxml', 'anydata', 'action', 'rpc', 'notification']
 
 _keywords_with_no_explicit_config = ['action', 'rpc', 'notification']
 
@@ -538,6 +539,10 @@ def v_grammar_typedef(ctx, stmt):
     if types.is_base_type(stmt.arg):
         err_add(ctx.errors, stmt.pos, 'BAD_TYPE_NAME', stmt.arg)
 
+def v_grammar_all(ctx, stmt):
+    v_grammar_unique_defs(ctx, stmt)
+    v_grammar_identifier(ctx, stmt)
+
 def v_grammar_unique_defs(ctx, stmt):
     """Verify that all typedefs and groupings are unique
     Called for every statement.
@@ -558,6 +563,20 @@ def v_grammar_unique_defs(ctx, stmt):
                         errcode, (definition.arg, other.pos))
             else:
                 dict[definition.arg] = definition
+
+def v_grammar_identifier(ctx, stmt):
+    try:
+        (arg_type, _subspec) = grammar.stmt_map[stmt.keyword]
+    except KeyError:
+        return
+    if (arg_type == 'identifier' and
+        grammar.re_identifier_illegal_prefix.search(stmt.arg) is not None):
+        if stmt.keyword == 'module' or stmt.keyword == 'submodule':
+            mod = stmt
+        else:
+            mod = stmt.i_module
+        if mod.i_version == '1':
+            err_add(ctx.errors, stmt.pos, 'XML_IDENTIFIER', stmt.arg)
 
 ### import and include phase
 
@@ -1044,10 +1063,28 @@ def _v_type_common_leaf(ctx, stmt):
     # ensure our type is validated
     v_type_type(ctx, type_)
 
+    if type_.i_typedef:
+        chk_status(ctx, stmt, type_.i_typedef)
+
     # keep track of our leafref
     type_spec = type_.i_type_spec
     if type(type_spec) == types.PathTypeSpec:
         stmt.i_leafref = type_spec
+
+def chk_status(ctx, x, y):
+    if (x.top.i_modulename != y.top.i_modulename):
+        return
+    def status(s):
+        stat = s.search_one('status')
+        if stat is not None:
+            return stat.arg
+        return 'current'
+    xstatus = status(x)
+    ystatus = status(y)
+    if ((xstatus == 'current' and ystatus != 'current') or
+        (xstatus == 'deprecated' and ystatus == 'obsolete')):
+        err_add(ctx.errors, x.pos, 'BAD_STATUS_REFERENCE',
+                (x.keyword, xstatus, y.keyword, ystatus))
 
 def v_type_grouping(ctx, stmt):
     if hasattr(stmt, 'i_is_validated'):
@@ -1123,6 +1160,7 @@ def v_type_uses(ctx, stmt, no_error_report=False):
         err_add(ctx.errors, stmt.pos,
                 'GROUPING_NOT_FOUND', (name, pmodule.arg))
     if stmt.i_grouping is not None:
+        chk_status(ctx, stmt, stmt.i_grouping)
         stmt.i_grouping.i_is_unused = False
 
 def v_type_augment(ctx, stmt):
@@ -1261,6 +1299,17 @@ def v_type_if_feature(ctx, stmt, no_error_report=False):
     except Abort:
         pass
 
+def v_type_status(ctx, stmt):
+    if ctx.max_status is not None:
+        def n(s):
+            if s == 'current':    return 0;
+            if s == 'deprecated': return 1;
+            if s == 'obsolete':   return 2;
+        if n(stmt.arg) > n(ctx.max_status):
+            # prune the parent
+            if stmt.parent not in stmt.i_module.i_prune:
+                stmt.i_module.i_prune.append(stmt.parent)
+
 def v_type_identity(ctx, stmt):
     if hasattr(stmt, 'i_is_validated'):
         if stmt.i_is_validated == True:
@@ -1398,7 +1447,7 @@ def v_expand_1_children(ctx, stmt):
             for a in s.search('augment'):
                 v_expand_2_augment(ctx, a)
 
-        elif s.keyword in _data_keywords and hasattr(stmt, 'i_children'):
+        elif s.keyword in data_keywords and hasattr(stmt, 'i_children'):
             stmt.i_children.append(s)
             v_expand_1_children(ctx, s)
         elif s.keyword in _keyword_with_children:
@@ -1981,6 +2030,7 @@ def v_reference_leaf_leafref(ctx, stmt):
         path_type_spec.i_path_list = path_list
         stmt.i_leafref_expanded = True
         if ptr is not None:
+            chk_status(ctx, stmt, ptr)
             stmt.i_leafref_ptr = (ptr, path_type_spec.pos)
 
 def v_reference_must(ctx, stmt):
@@ -2277,7 +2327,7 @@ def has_type(type, names):
 def is_mandatory_node(stmt):
     if hasattr(stmt, 'i_config') and stmt.i_config == False:
         return False
-    if stmt.keyword == 'leaf':
+    if stmt.keyword in ('leaf', 'choice', 'anyxml', 'anydata'):
         m = stmt.search_one('mandatory')
         if m is not None and m.arg == 'true':
             return True
@@ -2355,7 +2405,7 @@ def search_data_keyword_child(children, modulename, identifier):
     for child in children:
         if ((child.arg == identifier) and
             (child.i_module.i_modulename == modulename) and
-            child.keyword in _data_keywords):
+            child.keyword in data_keywords):
             return child
     return None
 
@@ -2737,6 +2787,127 @@ def validate_leafref_path(ctx, stmt, path_spec, path,
 ## Each statement in YANG is represented as an instance of Statement.
 
 class Statement(object):
+
+    # https://docs.python.org/3/reference/datamodel.html#slots
+    # Fun to see in one place just how many *possible* attributes
+    # a Statement can have!
+    __slots__ = (
+        # Baseline instance attributes, documented in __init__ below
+        'top', 'parent', 'pos', 'raw_keyword', 'keyword',
+        'ext_mod', 'arg', 'substmts',
+
+        # Applicable to most (all?) Statements, widely used
+        'is_grammatically_valid',    # True or False
+        'i_is_validated',            # True, False, or 'in_progress'
+        'i_config',
+
+        # "module" and "submodule" statements - see v_init_module()
+        'i_version',                 # Module stmt YANG version ('1', etc.)
+        'i_prefix',
+        'i_prefixes',
+        'i_unused_prefixes',
+        'i_missing_prefixes',
+        'i_modulename',
+        'i_features',
+        'i_identities',
+        'i_extensions',
+        'i_prune',
+        'i_including_modulename',
+        'i_ctx',
+        'i_undefined_augment_nodes',
+        'i_module',
+        'i_orig_module',
+
+        # "extension" statement - see v_init_extension()
+        'i_extension_modulename',
+        'i_extension_revision',
+        'i_extension',
+
+        # see v_init_has_children()
+        'i_children',
+
+        # Applicable to most (all?) statements - see v_init_stmt()
+        'i_typedefs',
+        'i_groupings',
+        'i_uniques',
+
+        # "import" statement - See v_init_import()
+        'i_is_safe_import',
+
+        # "module" and "submodule" statements - see v_grammar_module()
+        'i_latest_revision',
+
+        # "grouping" statement - see v_type_grouping()
+        'i_is_unused',                # Is there a "uses" using this grouping?
+        'i_has_i_children',           # also used in "augment" statements
+
+        # "augment" statement - see v_type_augment()
+        'i_target_node',              # Statement augmented by self
+        # 'i_has_i_children',         # also used in "grouping" statements
+
+        # "uses" statement - see v_type_uses()
+        'i_grouping',                 # "grouping" statement being used
+
+        # "if-feature" statement - see v_type_if_feature()
+        'i_feature',
+
+        # "base" statement - see v_type_base()
+        'i_identity',
+
+        # "type" statement - see v_type_type()
+        'i_is_derived',
+        'i_type_spec',
+        'i_typedef',
+        'i_ranges',
+        'i_lengths',
+
+        # "typedef" statement - see v_type_typedef()
+        'i_is_circular',
+        'i_default',                    # also in "leaf"/"leaf-list" statements
+        'i_default_str',                # also in "leaf" statements
+        'i_leafref',
+        'i_leafref_ptr',
+        'i_leafref_expanded',
+        # 'i_is_unused',                # also in "grouping" statements
+
+        # "leaf" statement - see v_type_leaf()
+        # 'i_default',                  # also in "typedef"/"leaf-list" stmts
+        # 'i_default_str',              # also in "typedef" statements
+
+        # "leaf-list" statement - see v_type_leaf_list()
+        # 'i_default',                  # also in "typedef"/"leaf" statements
+
+        # "module"/"submodule"/etc. - see v_expand_1_children()
+        'i_expanded',
+
+        # see v_reference_list()
+        'i_key',                      # List of Statements that're keys to self
+        'i_is_key',                   # True if self is a list key
+
+        # Only on copied Statements - see copy()
+        'i_uses',
+        'i_uses_pos',
+        'i_uses_top',
+
+        # "enum" statement - see types.validate_enums()
+        'i_value',
+
+        # "bits" statement - see types.validate_bits()
+        'i_position',
+
+        # see v_unique()
+        'i_unique',
+
+        # see v_expand_2_augment()
+        'i_augment',
+
+        # see follow_path()
+        'i_derefed_leaf',
+
+        # for plugins, etc.
+        '__dict__',
+    )
+
     def __init__(self, top, parent, pos, keyword, arg=None):
         self.top = top
         """pointer to the top-level Statement"""
@@ -2834,22 +3005,6 @@ class Statement(object):
                x.pprint(indent + ' ', f)
            print(indent + '--- END i_children ---')
 
-
-## FIXME: not used
-def validate_status(errors, x, y, defn, ref):
-    xstatus = x.status
-    if xstatus is None:
-        xstatus = 'current'
-    ystatus = y.status
-    if ystatus is None:
-        ystatus = 'current'
-    if xstatus == 'current' and ystatus == 'deprecated':
-        err_add(errors, x.pos, 'CURRENT_USES_DEPRECATED', (defn, ref))
-    elif xstatus == 'current' and ystatus == 'obsolete':
-        err_add(errors, x.pos, 'CURRENT_USES_OBSOLETE', (defn, ref))
-    elif xstatus == 'deprecated' and ystatus == 'obsolete':
-        err_add(errors, x.pos, 'DEPRECATED_USES_OBSOLETE', (defn, ref))
-
 def print_tree(stmt, substmts=True, i_children=True, indent=0):
     istr = "  "
     print("%s%s %s      %s %s" % (indent * istr, stmt.keyword,
@@ -2866,7 +3021,7 @@ def print_tree(stmt, substmts=True, i_children=True, indent=0):
 def mk_path_str(s, with_prefixes=False):
     """Returns the XPath path of the node"""
     if s.keyword in ['choice', 'case']:
-        return mk_path_str(s.parent)
+        return mk_path_str(s.parent, with_prefixes)
     def name(s):
         if with_prefixes:
             return s.i_module.i_prefix + ":" + s.arg
